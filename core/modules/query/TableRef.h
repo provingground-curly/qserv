@@ -82,11 +82,13 @@ public:
 
     std::ostream& putStream(std::ostream& os) const;
     void putTemplate(QueryTemplate& qt) const;
+    std::string sqlFragment() const;
 
     bool isSimple() const { return _joinRefs.empty(); }
     std::string const& getDb() const { return _db; }
     std::string const& getTable() const { return _table; }
     std::string const& getAlias() const { return _alias; }
+    bool hasAlias() const { return not _alias.empty(); }
     JoinRefPtrVector const& getJoins() const { return _joinRefs; }
 
     // Modifiers

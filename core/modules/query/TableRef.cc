@@ -128,6 +128,16 @@ std::ostream& TableRef::putStream(std::ostream& os) const {
 }
 
 
+std::string TableRef::sqlFragment() const {
+    QueryTemplate qt;
+    TableRef::render render(qt);
+    render.applyToQT(*this);
+    std::ostringstream os;
+    os << qt;
+    return os.str();
+}
+
+
 void TableRef::putTemplate(QueryTemplate& qt) const {
     if (!_db.empty()) {
         qt.append(_db); // Use TableEntry?

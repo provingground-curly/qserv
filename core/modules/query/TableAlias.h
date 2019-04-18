@@ -41,6 +41,14 @@
 #include "query/DbTablePair.h"
 
 
+// forward declarations
+namespace lsst {
+namespace qserv {
+namespace query {
+    class TableRef;
+}}}
+
+
 namespace lsst {
 namespace qserv {
 namespace query {
@@ -51,7 +59,10 @@ public:
     TableAliases() = default;
 
     /// Add an alias for a given db + table
-    void set(std::string const& db, std::string const& table, std::string const& alias);
+    bool set(std::string const& db, std::string const& table, std::string const& alias);
+
+    /// Add an alias provided by a table ref
+    bool set(std::shared_ptr<TableRef> const& tableRef);
 
     /// Get a db + table for an alias
     DbTablePair get(std::string const& alias) const;

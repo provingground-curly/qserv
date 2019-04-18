@@ -27,6 +27,7 @@
 
 // Qserv headers
 #include "query/TableAlias.h"
+#include "query/TableRef.h"
 
 
 namespace lsst {
@@ -43,8 +44,16 @@ DbTablePair TableAliases::get(std::string const& alias) const {
 }
 
 
-void TableAliases::set(std::string const& db, std::string const& table, std::string const& alias) {
-    tableAliasSet.insert(TableAlias(alias, DbTablePair(db, table)));
+bool TableAliases::set(std::string const& db, std::string const& table, std::string const& alias) {
+    return tableAliasSet.insert(TableAlias(alias, DbTablePair(db, table))).second;
+}
+
+
+bool TableAliases::set(std::shared_ptr<TableRef> const& tableRef) {
+    if (nullptr == tableRef) {
+        return false;
+    }
+    return set(tableRef->getDb(), tableRef->getTable(), tableRef->getAlias());
 }
 
 

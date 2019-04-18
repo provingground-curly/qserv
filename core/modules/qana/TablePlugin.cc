@@ -67,6 +67,7 @@
 #include "query/SelectList.h"
 #include "query/SelectStmt.h"
 #include "query/TableAlias.h"
+#include "query/TableRef.h"
 #include "query/ValueFactor.h"
 #include "query/WhereClause.h"
 #include "util/common.h"
@@ -80,50 +81,6 @@ namespace lsst {
 namespace qserv {
 namespace qana {
 
-class addMap {
-public:
-    addMap(query::TableAliases& t)
-        : _tableAliases(t) {}
-    void operator()(std::string const& alias, std::string const& db, std::string const& table) {
-        _tableAliases.set(db, table, alias);
-    }
-
-    query::TableAliases& _tableAliases;
-};
-
-class generateAlias {
-public:
-    explicit generateAlias(int& seqN) : _seqN(seqN) {}
-    std::string operator()() {
-        std::stringstream ss;
-        ss << "QST_" << ++_seqN << "_";
-        return ss.str();
-    }
-    int& _seqN;
-};
-
-template <typename G, typename A>
-class addAlias : public query::TableRef::Func {
-public:
-    addAlias(G g, A a) : _generate(g), _addMap(a) {}
-    void operator()(query::TableRef::Ptr t) {
-        if (t.get()) { t->apply(*this); }
-    }
-    void operator()(query::TableRef& t) {
-        // If no alias, then add one.
-        std::string alias = t.getAlias();
-        if (alias.empty()) {
-            alias = _generate();
-            t.setAlias(alias);
-        }
-        // Save ref
-        _addMap(alias, t.getDb(), t.getTable());
-    }
-private:
-    G _generate; // Functor that creates a new alias name
-    A _addMap; // Functor that adds a new alias mapping for matching
-               // later clauses.
-};
 
 ////////////////////////////////////////////////////////////////////////
 // fixExprAlias is a functor that acts on ValueExpr objects and
@@ -256,11 +213,23 @@ TablePlugin::applyLogical(query::SelectStmt& stmt,
     // Note also that this must happen after the default db context
     // has been filled in, or alias lookups will be incorrect.
 
-    // For each tableref, modify to add alias.
-    int seq=0;
-    addMap addMapContext(context.tableAliases);
-    std::for_each(fromListTableRefs.begin(), fromListTableRefs.end(),
-                  addAlias<generateAlias,addMap>(generateAlias(seq), addMapContext));
+    std::function<void(query::TableRef::Ptr)> aliasSetter = [&] (query::TableRef::Ptr tableRef) {
+        if (nullptr == tableRef) {
+            return;
+        }
+        if (not tableRef->hasAlias()) {
+            tableRef->setAlias("`" + tableRef->getDb() + "." + tableRef->getTable() + "`");
+        }
+        if (not context.tableAliases.set(tableRef)) {
+            // todo probably need to hande matching table refs in the FROM list?
+            throw std::logic_error("duplicate alias for " + tableRef->sqlFragment());
+        }
+        for (auto&& joinRef : tableRef->getJoins()){
+            aliasSetter(joinRef->getRight());
+        }
+    };
+    std::for_each(fromListTableRefs.begin(), fromListTableRefs.end(), aliasSetter);
+
 
     // Patch table references in the select list,
     query::SelectList& selectlist = stmt.getSelectList();
