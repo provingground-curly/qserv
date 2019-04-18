@@ -140,12 +140,12 @@ public:
     fixExprAlias(std::string const& db, query::TableAliasReverse& r) :
         _defaultDb(db), _tableAliasReverse(r) {}
 
-    void operator()(query::ValueExprPtr& vep) {
-        if (!vep.get()) {
+    void operator()(query::ValueExprPtr& valueExpr) {
+        if (nullptr == valueExpr)
             return;
-        }
+
         // For each factor in the expr, patch for aliasing:
-        query::ValueExpr::FactorOpVector& factorOps = vep->getFactorOps();
+        query::ValueExpr::FactorOpVector& factorOps = valueExpr->getFactorOps();
         for (auto&& factorOp : factorOps) {
             if (nullptr == factorOp.factor) {
                 throw std::logic_error("Bad ValueExpr::FactorOps");
@@ -217,6 +217,19 @@ TablePlugin::applyLogical(query::SelectStmt& stmt,
     LOGS(_log, LOG_LVL_TRACE, "applyLogical begin:\n\t" << stmt.getQueryTemplate() << "\n\t" << stmt);
     query::FromList& fromList = stmt.getFromList();
     context.collectTopLevelTableSchema(fromList);
+
+    // for each top-level ValueExpr in the SELECT list that does not have an alias, assign an alias that
+    // matches the original user query.
+    for (auto& valueExpr : *(stmt.getSelectList().getValueExprList())) {
+        if (not valueExpr->hasAlias() && not valueExpr->isStar())
+            valueExpr->setAlias('`' + valueExpr->sqlFragment() + '`');
+        // nptodo - WTD about storing the alias for this ValueExpr in the context?
+    }
+    // nptodo make each of the value exprs in the later clauses (where, group by, etc) refer to the alias
+    // of the ValueExpr (if we don't do this already?)
+    // nptodo the alias _may_ need disambiguation, but really only if the user may have used an alias
+    // that matches a non-aliased ValueExpr
+
     query::TableRefList& tableRefList = fromList.getTableRefList();
     // Fill-in default db context.
     query::DbTableVector v = fromList.computeResolverTables();
@@ -255,6 +268,7 @@ TablePlugin::applyLogical(query::SelectStmt& stmt,
     query::ValueExprPtrVector& exprList = *selectlist.getValueExprList();
     std::for_each(exprList.begin(), exprList.end(), fixExprAlias(
         context.defaultDb, context.tableAliasReverses));
+
     // where clause,
     if (stmt.hasWhereClause()) {
         query::ValueExprPtrVector e;

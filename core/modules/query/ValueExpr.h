@@ -89,6 +89,7 @@ public:
 
     std::string const& getAlias() const { return _alias; }
     void setAlias(std::string const& alias);
+    bool hasAlias() const { return not _alias.empty(); }
 
     /// @return a list of ValueFactor-Op
     FactorOpVector& getFactorOps() { return _factorOps; }
@@ -144,6 +145,7 @@ public:
 private:
     std::string _alias;
     FactorOpVector _factorOps;
+    std::string _internalAlias;
 };
 
 
