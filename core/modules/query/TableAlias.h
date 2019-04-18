@@ -1,7 +1,7 @@
 // -*- LSST-C++ -*-
 /*
  * LSST Data Management System
- * Copyright 2013-2014 LSST Corporation.
+ * Copyright 2013-2019 LSST Corporation.
  *
  * This product includes software developed by the
  * LSST Project (http://www.lsst.org/).
@@ -20,21 +20,22 @@
  * the GNU General Public License along with this program.  If not,
  * see <http://www.lsstcorp.org/LegalNotices/>.
  */
-/**
-  * @file
-  *
-  * @brief DbTablePair, TableAlias, and TableAliasReverse declarations.
-  *
-  * @author Daniel L. Wang, SLAC
-  */
 
 
 #ifndef LSST_QSERV_QUERY_TABLEALIAS_H
 #define LSST_QSERV_QUERY_TABLEALIAS_H
 
+
 // System headers
+#include <map>
 #include <sstream>
 #include <stdexcept>
+
+// Third-party headers
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index/identity.hpp>
+#include <boost/multi_index/member.hpp>
 
 // Local headers
 #include "query/DbTablePair.h"
@@ -45,81 +46,54 @@ namespace qserv {
 namespace query {
 
 
-/// TableAlias is a mapping from an alias to a (db, table)
-/// name. TableAlias is a forward mapping, and TableAliasReverse is a
-/// backwards mapping.
-class TableAlias {
+class TableAliases {
 public:
+    TableAliases() = default;
 
-    DbTablePair get(std::string const& alias) {
-        Map::const_iterator i = _map.find(alias);
-        if(i != _map.end()) { return i->second; }
-        return DbTablePair();
-    }
+    /// Add an alias for a given db + table
+    void set(std::string const& db, std::string const& table, std::string const& alias);
 
-    void set(std::string const& db, std::string const& table,
-             std::string const& alias) {
-        _map[alias] = DbTablePair(db, table);
-    }
+    /// Get a db + table for an alias
+    DbTablePair get(std::string const& alias) const;
+
+    /// Get an alias for a db + table
+    std::string const get(std::string db, std::string table) const;
+
+    /// Get an alias for a DbTablePair (a.k.a. a db + table)
+    std::string const get(DbTablePair const& dbTablePair) const;
+
+    // nptodo ? might need to add support for an "ambiguous" lookup (or set?), something to do with the
+    // db not being set, or the alias not being set? the impl in TableAliasReverse looks wrong or I don't
+    // understand it yet. TBD if we run into this as an issue maybe it was never actually used.
 
 private:
-    typedef std::map<std::string, DbTablePair> Map;
-    Map _map;
-};
-
-
-/// Stores a reverse alias mapping:  (db,table) -> alias
-class TableAliasReverse {
-public:
-    struct AmbiguousReference : public std::runtime_error {
-        AmbiguousReference(DbTablePair const& p)
-            : std::runtime_error("Ambiguous reference to " +
-                                 p.db + "." + p.table)
-            {}
+    struct TableAlias {
+        std::string alias;
+        DbTablePair dbTablePair;
+        TableAlias(std::string alias_, DbTablePair dbTablePair_)
+        : alias(alias_), dbTablePair(dbTablePair_)
+        {}
     };
 
-    std::string const& get(std::string db, std::string table) {
-        return get(DbTablePair(db, table));
-    }
+    struct ByAlias{};
+    struct ByDbTablePair{};
 
-    inline std::string const& get(DbTablePair const& p) const {
-        static std::string const empty;
-        typedef Map::const_iterator Iter;
-        Iter found = _map.find(p);
+    typedef boost::multi_index::multi_index_container<
+        TableAlias,
+        boost::multi_index::indexed_by<
+            boost::multi_index::ordered_unique<
+                boost::multi_index::tag<ByAlias>,
+                boost::multi_index::member<TableAlias, std::string, &TableAlias::alias>
+            >,
+            // ordered_unique here assumes exactly 1 alias for any database + table pair.
+            boost::multi_index::ordered_unique<
+                boost::multi_index::tag<ByDbTablePair>,
+                boost::multi_index::member<TableAlias, DbTablePair, &TableAlias::dbTablePair>
+            >
+        >
+    > TableAliasSet;
 
-        // Try slow lookup for inexact search
-        bool exists = false;
-        if((found == _map.end()) && p.db.empty()) {
-            for(Iter i=_map.begin(), e=_map.end(); i != e; ++i) {
-                if((i->first.table == p.table) && (!i->second.empty())) {
-                    if(!exists) {
-                        exists = true;
-                        found = i;
-                        // Continue looking to find other candidates
-                    } else { // More than one candidate found, bail out.
-                        throw AmbiguousReference(p);
-                    }
-                }
-            }
-        }
-        if(found != _map.end()) {
-            return found->second;
-        } else {
-            return empty;
-        }
-    }
-
-    void set(std::string const& db, std::string const& table,
-             std::string const& alias) {
-        if(alias.empty()) {
-            throw std::invalid_argument("Empty mapping");
-        }
-        _map[DbTablePair(db, table)] = alias;
-    }
-
-private:
-    typedef std::map<DbTablePair, std::string> Map;
-    Map _map;
+    TableAliasSet tableAliasSet;
 };
 
 

@@ -1,7 +1,7 @@
 // -*- LSST-C++ -*-
 /*
  * LSST Data Management System
- * Copyright 2013-2015 LSST Corporation.
+ * Copyright 2013-2019 LSST Corporation.
  *
  * This product includes software developed by the
  * LSST Project (http://www.lsst.org/).
@@ -93,8 +93,7 @@ public:
     proto::ScanInfo scanInfo; // Tables scanned (for shared scans)
 
     // Table aliasing
-    TableAlias tableAliases;
-    TableAliasReverse tableAliasReverses;
+    TableAliases tableAliases;
 
     // Owned QueryMapping and query restrictors
     std::shared_ptr<qana::QueryMapping> queryMapping;

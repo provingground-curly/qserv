@@ -82,16 +82,13 @@ namespace qana {
 
 class addMap {
 public:
-    addMap(query::TableAlias& t, query::TableAliasReverse& r)
-        : _tableAlias(t), _tableAliasReverse(r) {}
-    void operator()(std::string const& alias,
-                    std::string const& db, std::string const& table) {
-        _tableAlias.set(db, table, alias);
-        _tableAliasReverse.set(db, table, alias);
+    addMap(query::TableAliases& t)
+        : _tableAliases(t) {}
+    void operator()(std::string const& alias, std::string const& db, std::string const& table) {
+        _tableAliases.set(db, table, alias);
     }
 
-    query::TableAlias& _tableAlias;
-    query::TableAliasReverse& _tableAliasReverse;
+    query::TableAliases& _tableAliases;
 };
 
 class generateAlias {
@@ -131,14 +128,14 @@ private:
 ////////////////////////////////////////////////////////////////////////
 // fixExprAlias is a functor that acts on ValueExpr objects and
 // modifys them in-place, altering table names to use an aliased name
-// that is mapped via TableAliasReverse.
+// that is mapped via TableAliases.
 // It does not add table qualifiers where none already exist, because
 // there is no compelling reason to do so (yet).
 ////////////////////////////////////////////////////////////////////////
 class fixExprAlias {
 public:
-    fixExprAlias(std::string const& db, query::TableAliasReverse& r) :
-        _defaultDb(db), _tableAliasReverse(r) {}
+    fixExprAlias(std::string const& db, query::TableAliases const& tableAliases) :
+        _defaultDb(db), _tableAliases(tableAliases) {}
 
     void operator()(query::ValueExprPtr& valueExpr) {
         if (nullptr == valueExpr)
@@ -187,7 +184,7 @@ private:
 
     void _patchFuncExpr(query::FuncExpr& fe) {
         std::for_each(fe.params.begin(), fe.params.end(),
-                      fixExprAlias(_defaultDb, _tableAliasReverse));
+                      fixExprAlias(_defaultDb, _tableAliases));
     }
 
     void _patchStar(query::ValueFactor& vt) {
@@ -201,11 +198,11 @@ private:
 
     std::string _getAlias(std::string const& db,
                           std::string const& table) {
-        return _tableAliasReverse.get(db.empty() ? _defaultDb : db, table);
+        return _tableAliases.get(db.empty() ? _defaultDb : db, table);
     }
 
     std::string const& _defaultDb;
-    query::TableAliasReverse& _tableAliasReverse;
+    query::TableAliases const& _tableAliases;
 };
 
 ////////////////////////////////////////////////////////////////////////
@@ -259,7 +256,7 @@ TablePlugin::applyLogical(query::SelectStmt& stmt,
 
     // For each tableref, modify to add alias.
     int seq=0;
-    addMap addMapContext(context.tableAliases, context.tableAliasReverses);
+    addMap addMapContext(context.tableAliases);
     std::for_each(tableRefList.begin(), tableRefList.end(),
                   addAlias<generateAlias,addMap>(generateAlias(seq), addMapContext));
 
@@ -267,35 +264,35 @@ TablePlugin::applyLogical(query::SelectStmt& stmt,
     query::SelectList& selectlist = stmt.getSelectList();
     query::ValueExprPtrVector& exprList = *selectlist.getValueExprList();
     std::for_each(exprList.begin(), exprList.end(), fixExprAlias(
-        context.defaultDb, context.tableAliasReverses));
+        context.defaultDb, context.tableAliases));
 
     // where clause,
     if (stmt.hasWhereClause()) {
         query::ValueExprPtrVector e;
         stmt.getWhereClause().findValueExprs(e);
         std::for_each(e.begin(), e.end(), fixExprAlias(
-            context.defaultDb, context.tableAliasReverses));
+            context.defaultDb, context.tableAliases));
     }
     // group by clause,
     if (stmt.hasGroupBy()) {
         query::ValueExprPtrVector e;
         stmt.getGroupBy().findValueExprs(e);
         std::for_each(e.begin(), e.end(), fixExprAlias(
-            context.defaultDb, context.tableAliasReverses));
+            context.defaultDb, context.tableAliases));
     }
     // having clause,
     if (stmt.hasHaving()) {
         query::ValueExprPtrVector e;
         stmt.getHaving().findValueExprs(e);
         std::for_each(e.begin(), e.end(), fixExprAlias(
-            context.defaultDb, context.tableAliasReverses));
+            context.defaultDb, context.tableAliases));
     }
     // order by clause,
     if (stmt.hasOrderBy()) {
         query::ValueExprPtrVector e;
         stmt.getOrderBy().findValueExprs(e);
         std::for_each(e.begin(), e.end(), fixExprAlias(
-            context.defaultDb, context.tableAliasReverses));
+            context.defaultDb, context.tableAliases));
     }
     // and in the on clauses of all join specifications.
     typedef query::TableRefList::iterator TableRefIter;
@@ -305,7 +302,7 @@ TablePlugin::applyLogical(query::SelectStmt& stmt,
         for (JoinRefIter j = joinRefs.begin(), je = joinRefs.end(); j != je; ++j) {
             std::shared_ptr<query::JoinSpec> spec = (*j)->getSpec();
             if (spec) {
-                fixExprAlias fix(context.defaultDb, context.tableAliasReverses);
+                fixExprAlias fix(context.defaultDb, context.tableAliases);
                 // A column name in a using clause should be unqualified,
                 // so only patch on clauses.
                 std::shared_ptr<query::BoolTerm> on = spec->getOn();
