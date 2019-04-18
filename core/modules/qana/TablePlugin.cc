@@ -227,19 +227,21 @@ TablePlugin::applyLogical(query::SelectStmt& stmt,
     // nptodo the alias _may_ need disambiguation, but really only if the user may have used an alias
     // that matches a non-aliased ValueExpr
 
-    query::TableRefList& tableRefList = fromList.getTableRefList();
-    // Fill-in default db context.
+    // update the "resolver tables" (which is to say; the tables used in the FROM list) in the context.
     query::DbTableVector v = fromList.computeResolverTables();
     LOGS(_log, LOG_LVL_TRACE, "changing resolver tables from " << util::printable(context.resolverTables) <<
             " to " << util::printable(v));
     context.resolverTables.swap(v);
 
-    for (auto&& tableRef : tableRefList) {
+    // make sure the TableRefs in the from list are all completetly populated (db AND table)
+    query::TableRefList& fromListTableRefs = fromList.getTableRefList();
+    for (auto&& tableRef : fromListTableRefs) {
         tableRef->verifyPopulated(context.defaultDb);
     }
 
-    if (tableRefList.size() > 0) {
-        context.dominantDb = tableRefList[0]->getDb();
+    // update the dominant db in the context ("dominant" is not the same as the default db)
+    if (fromListTableRefs.size() > 0) {
+        context.dominantDb = fromListTableRefs[0]->getDb();
         _dominantDb = context.dominantDb;
     }
 
@@ -257,7 +259,7 @@ TablePlugin::applyLogical(query::SelectStmt& stmt,
     // For each tableref, modify to add alias.
     int seq=0;
     addMap addMapContext(context.tableAliases);
-    std::for_each(tableRefList.begin(), tableRefList.end(),
+    std::for_each(fromListTableRefs.begin(), fromListTableRefs.end(),
                   addAlias<generateAlias,addMap>(generateAlias(seq), addMapContext));
 
     // Patch table references in the select list,
@@ -295,21 +297,18 @@ TablePlugin::applyLogical(query::SelectStmt& stmt,
             context.defaultDb, context.tableAliases));
     }
     // and in the on clauses of all join specifications.
-    typedef query::TableRefList::iterator TableRefIter;
-    typedef query::JoinRefPtrVector::iterator JoinRefIter;
-    for (TableRefIter t = tableRefList.begin(), te = tableRefList.end(); t != te; ++t) {
-        query::JoinRefPtrVector& joinRefs = (*t)->getJoins();
-        for (JoinRefIter j = joinRefs.begin(), je = joinRefs.end(); j != je; ++j) {
-            std::shared_ptr<query::JoinSpec> spec = (*j)->getSpec();
-            if (spec) {
+    for (auto&& tableRef : fromListTableRefs) {
+        for (auto&& joinRef : tableRef->getJoins()) {
+            auto&& joinSpec = joinRef->getSpec();
+            if (joinSpec) {
                 fixExprAlias fix(context.defaultDb, context.tableAliases);
                 // A column name in a using clause should be unqualified,
                 // so only patch on clauses.
-                std::shared_ptr<query::BoolTerm> on = spec->getOn();
-                if (on) {
-                    query::ValueExprPtrVector e;
-                    on->findValueExprs(e);
-                    std::for_each(e.begin(), e.end(), fix);
+                auto&& onBoolTerm = joinSpec->getOn();
+                if (onBoolTerm) {
+                    query::ValueExprPtrVector valueExprs;
+                    onBoolTerm->findValueExprs(valueExprs);
+                    std::for_each(valueExprs.begin(), valueExprs.end(), fix);
                 }
             }
         }
