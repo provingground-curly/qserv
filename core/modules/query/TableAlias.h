@@ -56,10 +56,12 @@ public:
         if(i != _map.end()) { return i->second; }
         return DbTablePair();
     }
+
     void set(std::string const& db, std::string const& table,
              std::string const& alias) {
         _map[alias] = DbTablePair(db, table);
     }
+
 private:
     typedef std::map<std::string, DbTablePair> Map;
     Map _map;
@@ -79,6 +81,7 @@ public:
     std::string const& get(std::string db, std::string table) {
         return get(DbTablePair(db, table));
     }
+
     inline std::string const& get(DbTablePair const& p) const {
         static std::string const empty;
         typedef Map::const_iterator Iter;
@@ -105,6 +108,7 @@ public:
             return empty;
         }
     }
+
     void set(std::string const& db, std::string const& table,
              std::string const& alias) {
         if(alias.empty()) {
@@ -112,6 +116,7 @@ public:
         }
         _map[DbTablePair(db, table)] = alias;
     }
+
 private:
     typedef std::map<DbTablePair, std::string> Map;
     Map _map;
