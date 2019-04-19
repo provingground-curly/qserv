@@ -69,19 +69,11 @@ FromList::isJoin() const {
 
 std::vector<DbTablePair>
 FromList::computeResolverTables() const {
-    struct Memo : public TableRef::FuncC {
-        virtual void operator()(TableRef const& t) {
-            vec.push_back(DbTablePair(t.getDb(), t.getTable()));
-        }
-        std::vector<DbTablePair> vec;
-    };
-    Memo m;
-    typedef TableRefList::const_iterator Iter;
-    for(Iter i=_tableRefs->begin(), e= _tableRefs->end();
-        i != e; ++i) {
-        (**i).apply(m);
+    std::vector<DbTablePair> dbTablePairs;
+    for (auto&& tableRef : *_tableRefs) {
+        tableRef->getRelatedDbTableInfo(dbTablePairs);
     }
-    return m.vec;
+    return dbTablePairs;
 }
 
 

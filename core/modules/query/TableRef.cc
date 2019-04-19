@@ -222,4 +222,12 @@ bool TableRef::operator==(const TableRef& rhs) const {
 }
 
 
+void TableRef::getRelatedDbTableInfo(std::vector<DbTablePair>& dbTablePairs) const {
+    dbTablePairs.emplace_back(DbTablePair(_db, _table));
+    for (auto&& joinRef : _joinRefs) {
+        joinRef->getRight()->getRelatedDbTableInfo(dbTablePairs);
+    }
+}
+
+
 }}} // Namespace lsst::qserv::query
